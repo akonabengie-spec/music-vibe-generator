@@ -19,23 +19,34 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [targetMargin, setTargetMargin] = useState(30);
 
-  // 🛡️ THE STYLING FIX: Dynamically appends Tailwind safely inside the browser context
+  // 🛡️ PERMANENT FIX 1: Uses the official global Tailwind engine script link to bypass network timeouts
   useEffect(() => {
-    if (typeof window !== 'undefined' && !document.getElementById('tailwind-live-cdn')) {
-      const link = document.createElement('link');
-      link.id = 'tailwind-live-cdn';
-      link.rel = 'stylesheet';
-      link.href = 'https://jsdelivr.net';
-      document.head.appendChild(link);
+    if (typeof window !== 'undefined' && !document.getElementById('tailwind-global-cdn')) {
+      const script = document.createElement('script');
+      script.id = 'tailwind-global-cdn';
+      script.src = 'https://tailwindcss.com';
+      document.head.appendChild(script);
     }
   }, []);
 
+  // 🛡️ PERMANENT FIX 2: Completely isolated initializer keeps startup loops clean
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user || null); if (session?.user) fetchInventory();
-    });
+    const initSession = async () => {
+      if (typeof window === 'undefined') return;
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user || null);
+      if (session?.user) {
+        // Safe database data read trigger
+        supabase.from('inventory').select('*').order('created_at', { ascending: false })
+          .then(({ data }) => setInventoryList(data || []));
+      }
+    };
+    initSession();
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
-      setUser(session?.user || null); if (session?.user) fetchInventory(); else setInventoryList([]);
+      setUser(session?.user || null);
+      if (session?.user) fetchInventory();
+      else setInventoryList([]);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -51,9 +62,8 @@ export default function Home() {
     } catch (err) { setStatus(`Error: ${err.message}`); }
   };
 
-  // 🔒 FIX: Added a window environment block checker to prevent Vercel compilation crashes
   const fetchInventory = async () => {
-    if (typeof window === 'undefined') return; // Completely ignores the background server build step
+    if (typeof window === 'undefined' || !supabase) return;
     setLoading(true);
     try {
       const { data, error } = await supabase.from('inventory').select('*').order('created_at', { ascending: false });
@@ -63,7 +73,7 @@ export default function Home() {
 
   const handleAddProduct = async (e) => {
     e.preventDefault(); if (!productName || !category || !price || !quantity) return;
-    setStatus('Logging item data package to cloud ledger...');
+    setStatus('Logging item data package...');
     try {
       const { error } = await supabase.from('inventory').insert([{
         product_name: productName, category: category, price: parseFloat(price), stock_quantity: parseInt(quantity), user_id: user.id
@@ -93,41 +103,41 @@ export default function Home() {
   const filteredInventory = inventoryList.filter(item => item.product_name.toLowerCase().includes(searchQuery.toLowerCase()) || item.category.toLowerCase().includes(searchQuery.toLowerCase()));
   if (!user) {
     return (
-      <main className="min-h-screen bg-gray-950 text-gray-100 flex items-center justify-center p-6 font-sans">
-        <div className="w-full max-w-md bg-gray-900 rounded-2xl p-8 border border-gray-800 shadow-2xl">
+      <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6 font-sans">
+        <div className="w-full max-w-md bg-slate-900 rounded-2xl p-8 border border-slate-800 shadow-2xl">
           <div className="text-center mb-6">
-            <span className="text-[10px] bg-green-500 bg-opacity-10 text-green-400 font-mono font-bold px-2 py-1 rounded border border-green-500 border-opacity-20 uppercase tracking-widest">Enterprise Core v3.0</span>
-            <h1 className="text-3xl font-extrabold tracking-tight text-green-400 mb-2 mt-2">ZEE STOCK CORE</h1>
-            <p className="text-gray-400 text-xs mt-2">{status || 'Enter secure store access credentials'}</p>
+            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 font-mono font-bold px-2 py-1 rounded border border-emerald-500/20 uppercase tracking-widest">Enterprise Core v3.0</span>
+            <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent mb-2 mt-2">ZEE STOCK CORE</h1>
+            <p className="text-slate-400 text-xs mt-2">{status || 'Enter secure store access credentials'}</p>
           </div>
           <form onSubmit={handleAuth} className="space-y-4">
-            <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="Franchise Admin Email" className="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-100 text-sm font-medium focus:outline-none focus:border-green-500" />
-            <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="Security Key Password" className="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-100 text-sm font-medium focus:outline-none focus:border-green-500" />
-            <button type="submit" className="w-full py-3 bg-green-500 hover:bg-green-400 text-gray-900 font-extrabold rounded-xl text-sm transition-all transform active:scale-95 cursor-pointer">Unlock Retail Hub</button>
+            <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="Franchise Admin Email" className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm font-medium focus:outline-none focus:border-emerald-500" />
+            <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="Security Key Password" className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm font-medium focus:outline-none focus:border-emerald-500" />
+            <button type="submit" className="w-full py-3 bg-emerald-500 text-slate-950 font-extrabold rounded-xl text-sm transition-transform active:scale-95 cursor-pointer">Unlock Retail Hub</button>
           </form>
-          <button type="button" onClick={() => { setIsSigningUp(!isSigningUp); setStatus(''); }} className="w-full mt-4 text-xs text-center text-green-400 font-bold hover:underline">{isSigningUp ? 'Go to Admin Sign In' : 'Setup Client Enterprise Account Module'}</button>
+          <button type="button" onClick={() => { setIsSigningUp(!isSigningUp); setStatus(''); }} className="w-full mt-4 text-xs text-center text-emerald-400 font-bold hover:underline">{isSigningUp ? 'Go to Admin Sign In' : 'Setup Client Enterprise Account Module'}</button>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-950 text-gray-100 flex flex-col items-center p-4 md:p-8 font-sans">
-      <div className="w-full max-w-6xl flex flex-col sm:flex-row items-center justify-between mb-6 border-b border-gray-900 pb-4 gap-4">
+    <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center p-4 md:p-8 font-sans">
+      <div className="w-full max-w-6xl flex flex-col sm:flex-row items-center justify-between mb-6 border-b border-slate-900 pb-4 gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-green-400">ZEE STOCK CORE</h1>
-          <p className="text-[10px] font-mono text-gray-500 uppercase tracking-widest mt-1">Advanced ERP System: <span className="text-green-400 lowercase">{user.email}</span></p>
+          <h1 className="text-3xl font-extrabold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">ZEE STOCK CORE</h1>
+          <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mt-1">Advanced ERP + POS System: <span className="text-cyan-400 lowercase">{user.email}</span></p>
         </div>
-        <button onClick={() => supabase.auth.signOut()} className="px-4 py-2 border border-gray-800 hover:border-red-500 bg-gray-900 text-gray-400 text-xs font-bold rounded-xl transition-all cursor-pointer">🔒 Terminate Session</button>
+        <button onClick={() => supabase.auth.signOut()} className="px-4 py-2 border border-slate-800 hover:border-red-500/40 bg-slate-900 text-slate-400 text-xs font-bold rounded-xl transition-all cursor-pointer">🔒 Terminate Session</button>
       </div>
 
-      {status && <div className="w-full max-w-6xl mb-4 p-2 bg-green-500 bg-opacity-10 border border-green-500 border-opacity-20 text-green-400 text-xs text-center rounded-xl font-medium animate-pulse">{status}</div>}
+      {status && <div className="w-full max-w-6xl mb-4 p-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs text-center rounded-xl font-medium animate-pulse">{status}</div>}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 w-full max-w-6xl mb-6">
-        <div className="p-4 bg-gray-900 border border-gray-800 rounded-xl"><span className="text-[9px] font-mono text-gray-500 uppercase tracking-wider font-bold block">Total Stock Count</span><span className="text-2xl font-extrabold text-gray-200 block mt-1">{totalItemsCount} <span className="text-xs text-gray-600 font-normal">items</span></span></div>
-        <div className="p-4 bg-gray-900 border border-gray-800 rounded-xl"><span className="text-[9px] font-mono text-gray-500 uppercase tracking-wider font-bold block">Base Stock Cost</span><span className="text-2xl font-extrabold text-gray-300 block mt-1">K{coreCostValuation.toFixed(2)}</span></div>
-        <div className="p-4 bg-gray-900 border border-gray-800 rounded-xl"><span className="text-[9px] font-mono text-gray-500 uppercase tracking-wider font-bold block">PNG GST Accumulated (10%)</span><span className="text-2xl font-extrabold text-amber-500 block mt-1">K{calculatedGSTTotal.toFixed(2)}</span></div>
-        <div className="p-4 bg-gray-900 border border-gray-800 rounded-xl bg-gradient-to-br from-slate-900 to-cyan-950/20"><span className="text-[9px] font-mono text-green-400 uppercase tracking-wider font-bold block">Total Value (+ GST)</span><span className="text-2xl font-extrabold text-green-400 block mt-1">K{totalValuationWithGST.toFixed(2)}</span></div>
+        <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl"><span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider font-bold block">Total Stock Count</span><span className="text-2xl font-extrabold text-slate-200 block mt-1">{totalItemsCount} <span className="text-xs text-slate-600 font-normal">items</span></span></div>
+        <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl"><span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider font-bold block">Base Stock Cost</span><span className="text-2xl font-extrabold text-slate-300 block mt-1">K{coreCostValuation.toFixed(2)}</span></div>
+        <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl"><span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider font-bold block">PNG GST Accumulated (10%)</span><span className="text-2xl font-extrabold text-amber-500 block mt-1">K{calculatedGSTTotal.toFixed(2)}</span></div>
+        <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl bg-gradient-to-br from-slate-900 to-cyan-950/20"><span className="text-[9px] font-mono text-cyan-400 uppercase tracking-wider font-bold block">Total Value (+ GST)</span><span className="text-2xl font-extrabold text-cyan-400 block mt-1">K{totalValuationWithGST.toFixed(2)}</span></div>
       </div>
 
       <div className="w-full max-w-6xl mb-6">
@@ -135,23 +145,23 @@ export default function Home() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full max-w-6xl items-start">
-        <div className="lg:col-span-1 bg-gray-900 rounded-2xl p-5 border border-gray-800 shadow-xl">
-          <h2 className="text-xs font-bold uppercase tracking-widest mb-4 font-mono text-green-400">[Log Ingestion]</h2>
+        <div className="lg:col-span-1 bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-xl">
+          <h2 className="text-xs font-bold uppercase tracking-widest mb-4 font-mono text-emerald-400">[Log Ingestion]</h2>
           <form onSubmit={handleAddProduct} className="space-y-4">
-            <input type="text" required value={productName} onChange={e => setProductName(e.target.value)} placeholder="Item Name / Barcode Tag" className="w-full p-3 bg-slate-950 border border-gray-800 rounded-xl text-gray-200 text-xs font-medium focus:outline-none focus:border-green-400" />
-            <input type="text" required value={category} onChange={e => setCategory(e.target.value)} placeholder="Category Segments" className="w-full p-3 bg-slate-950 border border-gray-800 rounded-xl text-gray-200 text-xs font-medium focus:outline-none focus:border-green-400" />
+            <input type="text" required value={productName} onChange={e => setProductName(e.target.value)} placeholder="Item Name / Barcode Tag" className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-xs font-medium focus:outline-none focus:border-emerald-500" />
+            <input type="text" required value={category} onChange={e => setCategory(e.target.value)} placeholder="Category Segments" className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-xs font-medium focus:outline-none focus:border-emerald-500" />
             <div className="grid grid-cols-2 gap-3">
-              <input type="number" step="0.01" required value={price} onChange={e => setPrice(e.target.value)} placeholder="Price (Kina)" className="w-full p-3 bg-slate-950 border border-gray-800 rounded-xl text-gray-200 text-xs font-medium focus:outline-none focus:border-green-400" />
-              <input type="number" required value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="Quantity" className="w-full p-3 bg-slate-950 border border-gray-800 rounded-xl text-gray-200 text-xs font-medium focus:outline-none focus:border-green-400" />
+              <input type="number" step="0.01" required value={price} onChange={e => setPrice(e.target.value)} placeholder="Price (Kina)" className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-xs font-medium focus:outline-none focus:border-emerald-500" />
+              <input type="number" required value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="Quantity" className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-gray-200 text-xs font-medium focus:outline-none focus:border-emerald-500" />
             </div>
-            <button type="submit" className="w-full py-3 bg-green-500 text-gray-900 font-extrabold rounded-xl text-xs uppercase tracking-wider mt-2 transition-all transform active:scale-95 cursor-pointer">📥 Add Item to Shelf</button>
+            <button type="submit" className="w-full py-3 bg-emerald-500 text-slate-950 font-extrabold rounded-xl text-xs uppercase tracking-wider mt-2 transition-transform active:scale-95 cursor-pointer">📥 Add Item to Shelf</button>
           </form>
         </div>
 
-        <div className="lg:col-span-2 bg-gray-900 bg-opacity-60 rounded-2xl p-5 border border-gray-800 shadow-xl">
+        <div className="lg:col-span-2 bg-slate-900/60 rounded-2xl p-5 border border-slate-900 shadow-xl">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-            <h2 className="text-xs font-bold uppercase tracking-widest font-mono text-green-400">[Active Ledger Directory]</h2>
-            <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="🔍 Filter inventory matrix item..." className="p-2 px-3 bg-slate-950 border border-slate-800 rounded-xl text-gray-200 text-xs font-medium w-full sm:w-64 focus:outline-none focus:border-green-400" />
+            <h2 className="text-xs font-bold uppercase tracking-widest font-mono text-cyan-400">[Active Ledger Directory]</h2>
+            <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="🔍 Filter inventory matrix item..." className="p-2 px-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-xs font-medium w-full sm:w-64 focus:outline-none focus:border-cyan-400" />
           </div>
           {loading ? <div className="text-center py-12 text-slate-500 text-xs font-mono animate-pulse">Syncing parameters...</div> : filteredInventory.length > 0 ? (
             <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
@@ -159,7 +169,7 @@ export default function Home() {
                 <InventoryRow key={item.id} item={item} onDelete={handleDeleteProduct} />
               ))}
             </div>
-          ) : <div className="text-center py-12 text-gray-600 text-xs font-mono border border-dashed border-gray-800 rounded-xl">[No Products Logged] Ready for data entry inputs.</div>}
+          ) : <div className="text-center py-12 text-slate-700 text-xs font-mono border border-dashed border-slate-800 rounded-xl">[No Products Logged] Ready for data entry inputs.</div>}
         </div>
       </div>
     </main>
