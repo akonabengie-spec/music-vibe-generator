@@ -18,17 +18,6 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [targetMargin, setTargetMargin] = useState(30);
 
-  // 🛡️ Safe Live Style Injection: Waits for the browser window to exist before loading styles
-  useEffect(() => {
-    if (typeof window !== 'undefined' && !document.getElementById('tailwind-live-cdn')) {
-      const link = document.createElement('link');
-      link.id = 'tailwind-live-cdn';
-      link.rel = 'stylesheet';
-      link.href = 'https://jsdelivr.net';
-      document.head.appendChild(link);
-    }
-  }, []);
-
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null); if (session?.user) fetchInventory();
@@ -40,7 +29,7 @@ export default function Home() {
   }, []);
 
   const handleAuth = async (e) => {
-    e.preventDefault(); setStatus('Authenticating securely...');
+    e.preventDefault(); setStatus('Authenticating safely...');
     try {
       const res = isSigningUp 
         ? await supabase.auth.signUp({ email, password }) 
@@ -50,9 +39,7 @@ export default function Home() {
     } catch (err) { setStatus(`Error: ${err.message}`); }
   };
 
-  // 🔒 FIX: Added a window environment block checker to prevent Vercel compilation crashes
   const fetchInventory = async () => {
-    if (typeof window === 'undefined') return; // Aborts safe if pre-rendering on Vercel servers
     setLoading(true);
     try {
       const { data, error } = await supabase.from('inventory').select('*').order('created_at', { ascending: false });
@@ -156,8 +143,8 @@ export default function Home() {
             <input type="text" required value={productName} onChange={e => setProductName(e.target.value)} placeholder="Item Name / Barcode Tag" className="w-full p-3 bg-slate-950 border border-gray-800 rounded-xl text-gray-200 text-xs font-medium focus:outline-none focus:border-green-400" />
             <input type="text" required value={category} onChange={e => setCategory(e.target.value)} placeholder="Category Segments" className="w-full p-3 bg-slate-950 border border-gray-800 rounded-xl text-gray-200 text-xs font-medium focus:outline-none focus:border-green-400" />
             <div className="grid grid-cols-2 gap-3">
-              <input type="number" step="0.01" required value={price} onChange={e => setPrice(e.target.value)} placeholder="Price (Kina)" className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-gray-200 text-xs font-medium focus:outline-none focus:border-green-400" />
-              <input type="number" required value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="Quantity" className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-gray-200 text-xs font-medium focus:outline-none focus:border-green-400" />
+              <input type="number" step="0.01" required value={price} onChange={e => setPrice(e.target.value)} placeholder="Price (Kina)" className="w-full p-3 bg-slate-950 border border-gray-800 rounded-xl text-gray-200 text-xs font-medium focus:outline-none focus:border-green-400" />
+              <input type="number" required value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="Quantity" className="w-full p-3 bg-slate-950 border border-gray-800 rounded-xl text-gray-200 text-xs font-medium focus:outline-none focus:border-green-400" />
             </div>
             <button type="submit" className="w-full py-3 bg-green-500 text-gray-900 font-extrabold rounded-xl text-xs uppercase tracking-wider mt-2 transition-all transform active:scale-95 cursor-pointer">📥 Add Item to Shelf</button>
           </form>
@@ -165,8 +152,8 @@ export default function Home() {
 
         <div className="lg:col-span-2 bg-gray-900 bg-opacity-60 rounded-2xl p-5 border border-gray-800 shadow-xl">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-            <h2 className="text-xs font-bold uppercase tracking-widest font-mono text-green-400">[Active Ledger Directory]</h2>
-            <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="🔍 Filter inventory matrix item..." className="p-2 px-3 bg-gray-950 border border-slate-800 rounded-xl text-gray-200 text-xs font-medium w-full sm:w-64 focus:outline-none focus:border-green-400" />
+            <h2 className="text-xs font-bold uppercase tracking-widest mb-4 font-mono text-green-400">[Active Ledger Directory]</h2>
+            <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="🔍 Filter inventory matrix item..." className="p-2 px-3 bg-slate-950 border border-slate-800 rounded-xl text-gray-200 text-xs font-medium w-full sm:w-64 focus:outline-none focus:border-green-400" />
           </div>
           {loading ? <div className="text-center py-12 text-slate-500 text-xs font-mono animate-pulse">Syncing parameters...</div> : filteredInventory.length > 0 ? (
             <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
