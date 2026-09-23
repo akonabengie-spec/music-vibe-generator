@@ -6,7 +6,7 @@ import { supabase } from '../supabaseClient';
 if (typeof window !== 'undefined' && !document.getElementById('tailwind-cdn')) {
   const script = document.createElement('script');
   script.id = 'tailwind-cdn';
-  script.src = 'https://tailwindcss.com';
+  script.src = 'https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4';
   document.head.appendChild(script);
 }
 
