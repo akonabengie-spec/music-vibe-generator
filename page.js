@@ -1,218 +1,157 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient'; 
+import InventoryRow from './InventoryRow'; 
+import POSCart from './POSCart'; 
 
-// Dynamically loads standard global Tailwind stylesheets directly into the header space
 if (typeof window !== 'undefined' && !document.getElementById('tailwind-cdn')) {
-  const script = document.createElement('script');
-  script.id = 'tailwind-cdn';
-  script.src = 'https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4';
-  document.head.appendChild(script);
+  const s = document.createElement('script'); s.id = 'tailwind-cdn';
+  s.src = 'https://tailwindcss.com'; document.head.appendChild(s);
 }
 
 export default function Home() {
-  const [playlist, setPlaylist] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [currentVibe, setCurrentVibe] = useState('');
+  const [user, setUser] = useState(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSigningUp, setIsSigningUp] = useState(false);
+  const [status, setStatus] = useState('');
+  const [productName, setProductName] = useState('');
+  const [category, setCategory] = useState('');
+  const [price, setPrice] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [inventoryList, setInventoryList] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  
-  const [dbFavorites, setDbFavorites] = useState([]);
-  const [saveStatus, setSaveStatus] = useState('');
-
-  const vibes = [
-    { name: 'Chill 🏖️', tag: 'chill' },
-    { name: 'Workout 🔥', tag: 'workout' },
-    { name: 'Focus 🧠', tag: 'ambient' },
-    { name: 'Party 🎉', tag: 'party' },
-  ];
+  const [loading, setLoading] = useState(false);
+  const [targetMargin, setTargetMargin] = useState(30);
 
   useEffect(() => {
-    fetchSavedFavorites();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user || null); if (session?.user) fetchInventory();
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUser(session?.user || null); if (session?.user) fetchInventory(); else setInventoryList([]);
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
-  const fetchSavedFavorites = async () => {
+  const handleAuth = async (e) => {
+    e.preventDefault(); setStatus('Authenticating securely...');
     try {
-      const { data, error } = await supabase
-        .from('favorites')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setDbFavorites(data || []);
-    } catch (error) {
-      console.error('Error fetching favorites:', error.message);
-    }
+      const res = isSigningUp 
+        ? await supabase.auth.signUp({ email, password }) 
+        : await supabase.auth.signInWithPassword({ email, password });
+      if (res.error) throw res.error;
+      setStatus(isSigningUp ? 'Registration sent! Check email.' : 'Access granted.');
+    } catch (err) { setStatus(`Error: ${err.message}`); }
   };
 
-  const saveTrackToDatabase = async (track) => {
-    setSaveStatus(`Saving "${track.title}"...`);
-    try {
-      const { error } = await supabase
-        .from('favorites')
-        .insert([{ title: track.title, artist: track.artist, track_url: track.url }]);
-
-      if (error) throw error;
-      setSaveStatus('Track successfully bookmarked in Cloud!');
-      fetchSavedFavorites();
-      setTimeout(() => setSaveStatus(''), 3000);
-    } catch (error) {
-      console.error('Error writing to Supabase:', error.message);
-      setSaveStatus(`Database write failed: ${error.message}`);
-    }
-  };
-
-  const deleteTrackFromDatabase = async (id, title) => {
-    setSaveStatus(`Removing "${title}"...`);
-    try {
-      const { error } = await supabase.from('favorites').delete().eq('id', id);
-      if (error) throw error;
-      setSaveStatus('Track removed from database cluster.');
-      fetchSavedFavorites(); 
-      setTimeout(() => setSaveStatus(''), 3000);
-    } catch (error) {
-      console.error('Error deleting from Supabase:', error.message);
-      setSaveStatus(`Delete failed: ${error.message}`);
-    }
-  };
-
-  const fetchVibePlaylist = async (tag, displayName) => {
-    if (!tag.trim()) return;
+  const fetchInventory = async () => {
     setLoading(true);
-    setCurrentVibe(displayName);
     try {
-      const response = await fetch(`/api/get-vibe?vibe=${encodeURIComponent(tag.toLowerCase())}`);
-      const data = await response.json();
-      setPlaylist(data.playlist || []);
-    } catch (error) {
-      console.error('Error generating playlist:', error);
-    } finally {
-      setLoading(false);
-    }
+      const { data, error } = await supabase.from('inventory').select('*').order('created_at', { ascending: false });
+      if (error) throw error; setInventoryList(data || []);
+    } catch (err) { console.error(err.message); } finally { setLoading(false); }
   };
 
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    fetchVibePlaylist(searchQuery, searchQuery);
+  const handleAddProduct = async (e) => {
+    e.preventDefault(); if (!productName || !category || !price || !quantity) return;
+    setStatus('Logging item data package to cloud ledger...');
+    try {
+      const { error } = await supabase.from('inventory').insert([{
+        product_name: productName, category: category, price: parseFloat(price), stock_quantity: parseInt(quantity), user_id: user.id
+      }]);
+      if (error) throw error;
+      setStatus('Product saved successfully!');
+      setProductName(''); setCategory(''); setPrice(''); setQuantity(''); fetchInventory();
+      setTimeout(() => setStatus(''), 3000);
+    } catch (err) { setStatus(`Error: ${err.message}`); }
   };
+
+  const handleDeleteProduct = async (id) => {
+    try {
+      const { error } = await supabase.from('inventory').delete().eq('id', id);
+      if (error) throw error; setStatus('Product removed.'); fetchInventory();
+      setTimeout(() => setStatus(''), 3000);
+    } catch (err) { setStatus(`Error: ${err.message}`); }
+  };
+
+  const totalItemsCount = inventoryList.reduce((sum, item) => sum + (item.stock_quantity || 0), 0);
+  const coreCostValuation = inventoryList.reduce((sum, item) => sum + ((item.price || 0) * (item.stock_quantity || 0)), 0);
+  const calculatedGSTTotal = coreCostValuation * 0.10;
+  const totalValuationWithGST = coreCostValuation + calculatedGSTTotal;
+  const marginMultiplier = 1 / (1 - (targetMargin / 100));
+  const estimatedRevenueForecast = totalValuationWithGST * marginMultiplier;
+  const projectGrossProfitValue = estimatedRevenueForecast - totalValuationWithGST;
+  const filteredInventory = inventoryList.filter(item => item.product_name.toLowerCase().includes(searchQuery.toLowerCase()) || item.category.toLowerCase().includes(searchQuery.toLowerCase()));
+  if (!user) {
+    return (
+      <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6 font-sans">
+        <div className="w-full max-w-md bg-slate-900 rounded-2xl p-8 border border-slate-800 shadow-2xl">
+          <div className="text-center mb-6">
+            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 font-mono font-bold px-2 py-1 rounded border border-emerald-500/20 uppercase tracking-widest">Enterprise Core v3.0</span>
+            <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent mb-2">ZEE STOCK CORE</h1>
+            <p className="text-slate-400 text-xs mt-2">{status || 'Enter secure store access credentials'}</p>
+          </div>
+          <form onSubmit={handleAuth} className="space-y-4">
+            <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="Franchise Admin Email" className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm font-medium" />
+            <input type="password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="Security Key Password" className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 text-sm font-medium" />
+            <button type="submit" className="w-full py-3 bg-emerald-500 text-slate-950 font-extrabold rounded-xl text-sm transition-transform active:scale-95 cursor-pointer">Unlock Retail Hub</button>
+          </form>
+          <button type="button" onClick={() => { setIsSigningUp(!isSigningUp); setStatus(''); }} className="w-full mt-4 text-xs text-center text-emerald-400 font-bold hover:underline">{isSigningUp ? 'Go to Admin Sign In' : 'Setup Client Enterprise Account Module'}</button>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <main className="min-h-screen bg-slate-900 text-slate-100 flex flex-col items-center justify-start p-6 md:p-16 font-sans">
-      <div className="max-w-2xl text-center mb-8">
-        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent mb-4">
-          VibeSync Engine + Database
-        </h1>
-        <p className="text-slate-400 text-base">
-          Query music metadata and bookmark data packages directly onto your cloud server instance.
-        </p>
+    <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center p-4 md:p-8 font-sans">
+      <div className="w-full max-w-6xl flex flex-col sm:flex-row items-center justify-between mb-6 border-b border-slate-900 pb-4 gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">ZEE STOCK CORE</h1>
+          <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mt-1">Advanced ERP + POS System: <span className="text-cyan-400 lowercase">{user.email}</span></p>
+        </div>
+        <button onClick={() => supabase.auth.signOut()} className="px-4 py-2 border border-slate-800 hover:border-red-500/40 bg-slate-900 text-slate-400 text-xs font-bold rounded-xl transition-all cursor-pointer">🔒 Terminate Session</button>
       </div>
 
-      {saveStatus && (
-        <div className="mb-6 px-4 py-2 bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 font-semibold rounded-lg text-sm transition-all">
-          {saveStatus}
-        </div>
-      )}
+      {status && <div className="w-full max-w-6xl mb-4 p-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs text-center rounded-xl font-medium">{status}</div>}
 
-      <form onSubmit={handleSearchSubmit} className="w-full max-w-2xl mb-6 flex gap-3">
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Type any custom vibe or genre (e.g., lofi, jazz, reggae)..."
-          className="w-full p-4 bg-slate-800/80 border border-slate-700 rounded-xl focus:outline-none focus:border-emerald-500 text-slate-100 font-medium"
-        />
-        <button type="submit" className="px-6 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold rounded-xl transition-all active:scale-95 cursor-pointer">
-          Search Vibe
-        </button>
-      </form>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-2xl mb-8">
-        {vibes.map((vibe) => (
-          <button
-            key={vibe.tag}
-            onClick={() => {
-              setSearchQuery('');
-              fetchVibePlaylist(vibe.tag, vibe.name);
-            }}
-            className="p-3 bg-slate-800/50 hover:bg-slate-700 rounded-xl border border-slate-700/60 font-semibold text-sm cursor-pointer"
-          >
-            {vibe.name}
-          </button>
-        ))}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 w-full max-w-6xl mb-6">
+        <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl"><span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider font-bold block">Total Stock Count</span><span className="text-2xl font-extrabold text-slate-200 block mt-1">{totalItemsCount} <span className="text-xs text-slate-600 font-normal">items</span></span></div>
+        <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl"><span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider font-bold block">Base Stock Cost</span><span className="text-2xl font-extrabold text-slate-300 block mt-1">K{coreCostValuation.toFixed(2)}</span></div>
+        <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl"><span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider font-bold block">PNG GST Accumulated (10%)</span><span className="text-2xl font-extrabold text-amber-500 block mt-1">K{calculatedGSTTotal.toFixed(2)}</span></div>
+        <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl bg-gradient-to-br from-slate-900 to-cyan-950/20"><span className="text-[9px] font-mono text-cyan-400 uppercase tracking-wider font-bold block">Total Value (+ GST)</span><span className="text-2xl font-extrabold text-cyan-400 block mt-1">K{totalValuationWithGST.toFixed(2)}</span></div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 w-full max-w-5xl items-start">
-        <div className="bg-slate-800/40 rounded-2xl p-6 border border-slate-800/80 shadow-xl">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin mb-4"></div>
-              <p className="text-slate-400 text-sm">Crawling global metadata structures...</p>
+      <div className="w-full max-w-6xl mb-6">
+        <POSCart inventoryList={inventoryList} onCheckoutSuccess={fetchInventory} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full max-w-6xl items-start">
+        <div className="lg:col-span-1 bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-xl">
+          <h2 className="text-xs font-bold uppercase tracking-widest mb-4 font-mono text-emerald-400">[Log Ingestion]</h2>
+          <form onSubmit={handleAddProduct} className="space-y-4">
+            <input type="text" required value={productName} onChange={e => setProductName(e.target.value)} placeholder="Item Name / Barcode Tag" className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-xs font-medium" />
+            <input type="text" required value={category} onChange={e => setCategory(e.target.value)} placeholder="Category Segments" className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-xs font-medium" />
+            <div className="grid grid-cols-2 gap-3">
+              <input type="number" step="0.01" required value={price} onChange={e => setPrice(e.target.value)} placeholder="Price (Kina)" className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-xs font-medium" />
+              <input type="number" required value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="Quantity" className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-xs font-medium" />
             </div>
-          ) : playlist.length > 0 ? (
-            <div>
-              <h2 className="text-lg font-bold text-slate-200 mb-4 capitalize">
-                Live Query: <span className="text-emerald-400">{currentVibe}</span>
-              </h2>
-              <div className="space-y-3">
-                {playlist.map((track, idx) => (
-                  <div key={idx} className="flex flex-col p-4 bg-slate-800 rounded-xl border border-slate-700/50">
-                    <div className="mb-3 truncate">
-                      <p className="font-bold text-slate-200 truncate">{track.title}</p>
-                      <p className="text-xs text-slate-400 truncate">{track.artist}</p>
-                    </div>
-                    <div className="flex gap-2 w-full">
-                      <button
-                        onClick={() => saveTrackToDatabase(track)}
-                        className="w-full text-center text-xs font-bold py-2 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500 hover:text-slate-900 border border-emerald-500/20 rounded-lg transition-colors cursor-pointer"
-                      >
-                        ⭐ Favorite
-                      </button>
-                      <a href={track.url} target="_blank" rel="noopener noreferrer" className="w-1/3 text-center text-xs font-semibold py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors">
-                        Meta
-                      </a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-12 text-slate-500 text-sm">
-              Use input modules to stream live track grids.
-            </div>
-          )}
+            <button type="submit" className="w-full py-3 bg-emerald-500 text-slate-950 font-extrabold rounded-xl text-xs uppercase tracking-wider mt-2 transition-transform active:scale-95 cursor-pointer">📥 Add Item to Shelf</button>
+          </form>
         </div>
 
-        <div className="bg-slate-800/20 rounded-2xl p-6 border border-slate-800/50 shadow-xl">
-          <h2 className="text-lg font-bold text-slate-200 mb-4 flex items-center justify-between">
-            <span>Cloud Database Cloud Cluster</span>
-            <span className="text-xs bg-slate-700 px-2 py-1 rounded text-cyan-400 font-mono font-semibold">PostgreSQL</span>
-          </h2>
-          {dbFavorites.length > 0 ? (
-            <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-              {dbFavorites.map((fav) => (
-                <div key={fav.id} className="flex items-center justify-between p-3 bg-slate-900/60 rounded-xl border border-slate-800/80 hover:border-red-500/30 transition-all group">
-                  <div className="truncate pr-4 w-2/3">
-                    <p className="text-sm font-bold text-slate-300 truncate">{fav.title}</p>
-                    <p className="text-xs text-slate-500 truncate">{fav.artist}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono font-semibold text-slate-500 border border-slate-800 px-2 py-1 rounded whitespace-nowrap">
-                      ID: #{fav.id}
-                    </span>
-                    <button
-                      onClick={() => deleteTrackFromDatabase(fav.id, fav.title)}
-                      className="p-2 bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-500/30 rounded-lg transition-all text-xs cursor-pointer"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </div>
+        <div className="lg:col-span-2 bg-slate-900/60 rounded-2xl p-5 border border-slate-900 shadow-xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <h2 className="text-xs font-bold uppercase tracking-widest font-mono text-cyan-400">[Active Ledger Directory]</h2>
+            <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="🔍 Filter inventory matrix item..." className="p-2 px-3 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-xs font-medium w-full sm:w-64" />
+          </div>
+          {loading ? <div className="text-center py-12 text-slate-500 text-xs font-mono animate-pulse">Syncing parameters...</div> : filteredInventory.length > 0 ? (
+            <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
+              {filteredInventory.map((item) => (
+                <InventoryRow key={item.id} item={item} onDelete={handleDeleteProduct} />
               ))}
             </div>
-          ) : (
-            <div className="text-center py-12 text-slate-600 text-xs font-mono">
-              [Database Empty] No rows inserted inside public.favorites schema yet.
-            </div>
-          )}
+          ) : <div className="text-center py-12 text-slate-700 text-xs font-mono border border-dashed border-slate-800 rounded-xl">[No Products Logged] Ready for data entry inputs.</div>}
         </div>
       </div>
     </main>
